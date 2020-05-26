@@ -1,0 +1,50 @@
+.THIS .slds-icon-text-default {
+   fill: #7acdf2; 
+  
+}
+.THIS .iconHeight{
+    height:1.2vw;
+    width:1.2vw;
+}
+.THIS .textColor{
+    color:black;
+}
+.THIS .slds-card{
+   background: #142933 !important;
+   color:white !important;
+  
+}
+.THIS .slds-media__body{
+     text-align: center;
+}
+.THIS .slds-table_header-fixed_container{
+    width: 95%;
+    margin-left: 2.5%;
+}
+.THIS .alignclass{
+    text-align: center;
+}
+.THIS .slds-grid_align-end {
+    justify-content: flex-start;
+}
+.THIS .slds-grid--align-end{
+    justify-content: flex-start;
+}
+.THIS .slds-input-has-icon_left-right{
+    height: 50px;
+    border-radius: 25px;
+}
+.THIS .slds-input{
+    height: 50px;
+    border-radius: 25px;
+}
+.THIS .slds-inputCustom{
+	height: 50px;
+    width: 100%;
+}
+.THIS .slds-custompicklist{
+    width: 50%;
+}
+.THIS .slds-NumberOfCandidates{
+    height: 30px;
+}

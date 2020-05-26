@@ -1,0 +1,401 @@
+public with sharing class CandidateGlobalSearchController 
+{
+    public static WrapperClass candidatesearchHelper(String searchkey){
+        set<Id> ParentId = new set<Id>();
+        set<Id> CandidateId = new set<Id>();
+        set<Id> contentversionId = new set<Id>();
+        set<String> LocationSet = new set<String>();
+        set<String> TypeSet = new set<String>();
+        list<String> searchList = searchKey.split(',');
+        String stringval='';
+        for(String st: searchList){
+            if(String.isBlank(stringval)){
+                String stringvalue = st.trim(); 
+                stringval = '("' + stringvalue + '")';
+            }else{
+                String stringvalue = st.trim(); 
+                stringval = stringval+' AND '+'("' + stringvalue + '")';
+            }
+        }
+        system.debug('test '+stringval);
+        list<String> resumetextList = new list<String>();
+        resumetextList.add('%Resume%');
+        resumetextList.add('%resume%');
+        String statusval = Label.OnBoarded;
+        set<Candidate__c> candidateRecordSet  = new set<Candidate__c>();
+        list<Candidate__c> candidateRecord  = new list<Candidate__c>();
+        String query1='FIND :stringval RETURNING Candidate__c(Name,hasOptedOutOfEmail__c,IsResumeAvailable__c,Id,Resume__c,Candidate_Status__c,Email__c,Primary_Phone__c,Type__c,Current_Location__c,Total_Experience__c WHERE Candidate_Status__c!=:statusval),ContentVersion(Id,ContentDocumentId,VersionData,ContentBodyId,Title WHERE Title LIKE :resumetextList)';
+        List<List<SObject>> result  =search.query(query1);
+        Candidate__c[] searchCandidate = (Candidate__c[])result[0];
+        ContentVersion[] searchFile = (ContentVersion[])result[1];
+        for(Candidate__c cc: searchCandidate)
+        {
+            candidateRecordSet.add(cc);  
+            LocationSet.add(cc.Current_Location__c);
+            TypeSet.add(cc.Candidate_Status__c);
+        }
+        for(ContentVersion cv:searchFile)
+        {
+            contentversionId.add(cv.ContentDocumentId);  
+        }
+        if(contentversionId.size()>0){
+            list<ContentDocumentLink> listOfDocument = new list<ContentDocumentLink>([select ContentDocumentID,LinkedEntityId FROM ContentDocumentLink WHERE ContentDocumentID IN:contentversionId]);
+            for(ContentDocumentLink cd:listOfDocument)
+            {
+                String sObjName = cd.LinkedEntityId.getSObjectType().getDescribe().getName();
+                if(sObjName.equalsIgnoreCase('Job_Application__c'))
+                    ParentId.add(cd.LinkedEntityId); 
+                else if(sObjName.equalsIgnoreCase('Candidate__c')){
+                    CandidateId.add(cd.LinkedEntityId); 
+                }
+            }
+        }
+        if(ParentId.size()>0 || CandidateId.size()>0){
+            for(Job_Application__c ja:[select id, Candidate__c from Job_Application__c where Id IN:ParentId OR Candidate__c IN: CandidateId])
+            {
+                CandidateId.add(ja.Candidate__c);   
+            }
+            for(Candidate__c candidateFromFile : [select id,hasOptedOutOfEmail__c,Candidate_Status__c,IsResumeAvailable__c,Resume__c,name,Email__c,Total_Experience__c,Primary_Phone__c,Type__c,Current_Location__c from Candidate__c where Id IN: CandidateId AND Candidate_Status__c!=:Label.OnBoarded]){
+                candidateRecordSet.add(candidateFromFile);
+                LocationSet.add(candidateFromFile.Current_Location__c);
+                TypeSet.add(candidateFromFile.Candidate_Status__c);
+            }
+        }
+        candidateRecord.addAll(candidateRecordSet); 
+        list<String> Locationlist = new list<String>();
+        Locationlist.add('--None--');
+        Locationlist.addAll(LocationSet);
+        system.debug('test '+TypeSet);
+        list<String> Typelist = new list<String>();
+        Typelist.add('--None--');
+        Typelist.addAll(TypeSet);
+        WrapperClass wrp = new WrapperClass();
+        wrp.typePicklist = Typelist;
+        wrp.LocationPicklist = Locationlist;
+        wrp.candidatelist = candidateRecord;
+        return wrp;   
+    }
+    @AuraEnabled
+    public static WrapperClass resultCandidate(string searchkey){
+        try{
+            return CandidateGlobalSearchController.candidatesearchHelper(searchkey);
+        }
+        catch(exception e){
+            Schema.DescribeSObjectResult objectDescriptioncontent = ErrorLog__c.getSObjectType().getDescribe();
+            if(objectDescriptioncontent.isCreateable() && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'StackTrace__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Message__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'LineNumber__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Type__c')){
+                ErrorLog__c errorlog = new ErrorLog__c(Type__c='CandidateGlobalSearchController.filterdata', StackTrace__c=e.getStackTraceString(), Message__c=e.getMessage(), LineNumber__c=e.getLineNumber());
+                database.insert(errorlog, false);
+            }
+            return null;
+        }
+    }
+    
+    @AuraEnabled
+    public static WrapperClass getskilledCandidate(String recordidval){
+        if(String.isNotBlank(recordidval)){
+            list<Job__c> candidateList =[Select Id, MassEmailtoAllCandidates__c, Skills__c from Job__c where Id=:recordidval];
+            if(candidateList.size()>0 && String.isNotBlank(candidateList[0].Skills__c)){
+                WrapperClass wrap= CandidateGlobalSearchController.candidatesearchHelper(candidateList[0].Skills__c);
+                wrap.massEmailCompleted = candidateList[0].MassEmailtoAllCandidates__c;
+                list<Candidate__c> candidatefulllist = wrap.candidatelist;
+                list<Candidate__c> candidatefinallist = new list<Candidate__c>();
+                set<Id> candidateMap = new set<Id>(); 
+                for(Job_Application__c jobapplication: [SELECT Id, Candidate__c from Job_Application__c where Job__c =: recordidval]){
+                    candidateMap.add(jobapplication.Candidate__c);
+                }
+                for(Candidate__c cand: candidatefulllist){
+                    if(!candidateMap.contains(cand.Id)){
+                        candidatefinallist.add(cand);
+                    }
+                }
+                wrap.candidatelist = candidatefinallist;
+                return wrap;
+            }
+            else
+                return null;
+        }
+        return null;
+    }
+    
+    @AuraEnabled
+    public static WrapperClass createjobapplication(list<Candidate__c> candidate, String jobId, String operationType){
+        try{
+            system.debug('test '+candidate+''+jobId+''+operationType);
+            map<String, String> apptocandMap = new map<String, String>();
+            for(Applicant_to_Candidate__mdt atoc: [Select Id, Mapping_Applicant_Field__c, Mapping_Candidate_Field__c from Applicant_to_Candidate__mdt  where Id!=NULL ]){
+                apptocandMap.put(atoc.Mapping_Candidate_Field__c, atoc.Mapping_Applicant_Field__c);
+            }
+            Map<Id, Id> mapOfCandidateAndContentId = new Map<Id, Id>();
+            Set<Id> setofCandIds = new Set<Id>();
+            for(Candidate__c iter: candidate){
+                setofCandIds.add(iter.Id); 
+            }
+            List<ContentDocumentLink> listOfContentDocs = [SELECT contentdocumentId, ContentDocument.Title, LinkedEntityId  FROM CONTENTDOCUMENTLINK WHERE LinkedEntityId IN :setofCandIds AND ContentDocument.Title like '%Resume%'];
+            for(ContentDocumentLink iter: listOfContentDocs){
+                mapOfCandidateAndContentId.put(iter.LinkedEntityId, iter.contentdocumentId);
+            }
+            if(apptocandMap.size()>0 && candidate.size()>0 && String.isNotBlank(jobId)){
+                list<Job_Application__c> applicationList = new list<Job_Application__c>();
+                for(Candidate__c cand: candidate){
+                    Job_Application__c application = new Job_Application__c();
+                    for(String fieldvals: apptocandMap.keySet()){
+                        if(apptocandMap.containsKey(fieldvals))
+                            application.put(apptocandMap.get(fieldvals), cand.get(fieldvals));
+                    }
+                    application.resume__c = cand.resume__c;
+                    application.Job__c = jobId;
+                    application.Added_to_JobOrder__c = true;
+                    application.Candidate__c = cand.Id;
+                    applicationList.add(application);
+                    System.debug('reusme check '+application.resume__c);
+                    if(String.isNotBlank(operationType) && operationType.equalsIgnoreCase(Label.Submitted))
+                        application.Application_Status__c = Label.Submitted;
+                    else if(String.isNotBlank(operationType) && operationType.equalsIgnoreCase(Label.Add_Candidate))
+                        application.Application_Status__c = 'New';
+                }
+                if(applicationList.size()>0)
+                    database.insert(applicationList, false);
+                List<ContentDocumentLink> listOfContentDocLink = new  List<ContentDocumentLink>();
+                for(Job_Application__c iter: applicationList){
+                    ContentDocumentLink cdl = new ContentDocumentLink();
+                    cdl.ContentDocumentId = mapOfCandidateAndContentId.get(iter.Candidate__c);
+                    cdl.LinkedEntityId = iter.Id;
+                    cdl.ShareType = 'V';
+                    listOfContentDocLink.add(cdl);
+                }
+                if(listOfContentDocLink.size() > 0){
+                    database.insert(listOfContentDocLink, false);
+                }
+                return getskilledCandidate(jobId);
+            }
+        }
+        catch(exception e){
+            Schema.DescribeSObjectResult objectDescriptioncontent = ErrorLog__c.getSObjectType().getDescribe();
+            if(objectDescriptioncontent.isCreateable() && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'StackTrace__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Message__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'LineNumber__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Type__c')){
+                ErrorLog__c errorlog = new ErrorLog__c(Type__c='CandidateGlobalSearchController.createjobapplication', StackTrace__c=e.getStackTraceString(), Message__c=e.getMessage(), LineNumber__c=e.getLineNumber());
+                database.insert(errorlog, false);
+            }
+            return null;
+        }
+        return null;
+    } 
+    
+    @AuraEnabled
+    public static void sendmassemail(list<Candidate__c> candidate, String jobId, boolean allcandidates, String mBody, String mSubject, list<String> fileIdlist, String displayCandName){
+        list<Job__c> jobList = [SELECT Id, Name, MassEmailtoAllCandidates__c, Job_Description__c from Job__c where Id=:jobId];
+        if(jobList.size()>0 && candidate.size()>0){
+            String orgwideAddressName='';
+            String displaynameval='';
+            list<User> userlist = [SELECT Id, Signature FROM User where ID =:userinfo.getUserId()];
+            list<OrgWideEmailAddress> addressList = [SELECT Id, DisplayName from OrgWideEmailAddress where DisplayName=:Label.MassEmailOrgWideName];
+            if(addressList.size()>0){
+                orgwideAddressName = addressList[0].Id;
+                displaynameval = addressList[0].DisplayName;
+            }
+            list<EmailTemplate> emailtemplates = [SELECT Id from EmailTemplate where name=:Label.CandidateMassMailTemplate];
+            String templateId='';
+            if(emailtemplates.size()>0){
+                templateId = emailtemplates[0].Id;
+            }
+            List<Messaging.SingleEmailMessage> emailsToSend = new List<Messaging.SingleEmailMessage>();
+            List<Messaging.Emailfileattachment> fileAttachments = new List<Messaging.Emailfileattachment>();
+            if(fileIdlist.size()>0){
+                for (ContentVersion a : [select FileType, Title, VersionData from ContentVersion where ContentDocumentId IN: fileIdlist])
+                {
+                    Messaging.Emailfileattachment efa = new Messaging.Emailfileattachment();
+                    efa.setFileName(a.Title+'.'+a.FileType);
+                    efa.setBody(a.VersionData);
+                    fileAttachments.add(efa);
+                }
+            }  
+            for(Candidate__c cand: candidate){
+                if(!cand.hasOptedOutOfEmail__c){
+                    Messaging.SingleEmailMessage email = new messaging.SingleEmailMessage();
+                    email.setToAddresses(new list<string>{cand.Email__c});
+                    email.setReplyTo(Label.CandidateCreationApexEmail);
+                    email.setSenderDisplayName(displaynameval);
+                    email.setTemplateId(templateId);
+                    email.setTargetObjectId(Userinfo.getUserId());
+                    email.setWhatId(cand.Id);
+                    email.setTreatTargetObjectAsRecipient(false);
+                    email.setFileAttachments(fileAttachments);
+                    Savepoint sp = Database.setSavepoint();
+                    Messaging.sendEmail(new Messaging.SingleEmailMessage[] {email});
+                    Database.rollback(sp);
+                    
+                    String mailTextBody = mBody;
+                    String mailHtmlBody = mBody;
+                    String mailSubject = mSubject;
+                    if(String.isNotBlank(cand.Name)){
+                        mailTextBody = mailTextBody.replace(displayCandName+',',cand.Name+', ');
+                        mailHtmlBody = mailHtmlBody.replace(displayCandName+',',cand.Name+', ');
+                    }
+                    if(String.isNotBlank(jobList[0].Name)){
+                        mailTextBody = mailTextBody.replace('@jobname@.',jobList[0].Name+'.');
+                        mailHtmlBody = mailHtmlBody.replace('@jobname@.',jobList[0].Name+'.');
+                        mailSubject = mailSubject.replace('@jobname@',jobList[0].Name);
+                    }
+                    if(String.isNotBlank(jobList[0].Job_Description__c) && jobList[0].Job_Description__c != NULL){
+                        System.debug(jobList[0].Job_Description__c);
+                        mailTextBody = mailTextBody.replace('@jobdesc@',jobList[0].Job_Description__c);
+                        mailHtmlBody = mailHtmlBody.replace('@jobdesc@',jobList[0].Job_Description__c);
+                    }
+                    if(userlist.size()>0 && String.isNotBlank(userlist[0].Signature)){
+                        mailHtmlBody = mailHtmlBody+userlist[0].Signature;
+                        mailTextBody = mailTextBody+userlist[0].Signature;
+                    }
+                    else{
+                        mailHtmlBody = mailHtmlBody+Label.EmailRegard+' <br/>'+userInfo.getName();
+                        mailTextBody = mailTextBody+Label.EmailRegard+' <br/>'+userInfo.getName();
+                    }
+                    mailHtmlBody = mailHtmlBody+'\n\n <div style="color:white">threadjobId=%@%'+jobList[0].Id+'%@% </div><br/><br/>';
+                    mailHtmlBody = mailHtmlBody+'<div style="text-align:center; font-size: 11px;"><a href="mailto:'+Label.UnsubscribeEmail+'?subject='+Label.UnsubscribeSubject+'">Click Here</a> '+Label.UnsubscribeBody+'</div>';
+                    email.setHtmlBody(mailHtmlBody);
+                    email.setPlainTextBody(mailTextBody);
+                    email.setSubject(mailSubject);
+                    emailsToSend.add(email);
+                }
+            }
+            if(emailsToSend.size()>0){
+                Messaging.sendEmail(emailsToSend);
+            }  
+            if(allcandidates){
+                joblist[0].MassEmailtoAllCandidates__c = true;
+                update joblist[0];
+            }
+        }
+    }
+    
+    @AuraEnabled
+    public static WrapperClass filterdata(list<String> candIdList, Integer minval, Integer maxval, String loc, String typeval){
+        try{
+            String query = 'SELECT Id,Name,Candidate_Status__c,IsResumeAvailable__c,Resume__c,Email__c,Primary_Phone__c,Type__c,Current_Location__c,Total_Experience__c from Candidate__c WHERE ID IN: candIdList';
+            system.debug('test '+minval+' '+maxval+''+candIdList);
+            if(minval!=NULL){
+                query=query+' AND Total_Experience__c>=:minval';
+            }
+            if(maxval!=NULL){
+                query=query+' AND Total_Experience__c<=:maxval';
+            }
+            if(String.isNotBlank(loc)){
+                query=query+' AND Current_Location__c=:loc';
+            }
+            if(String.isNotBlank(typeval)){
+                query=query+' AND Candidate_Status__c=:typeval';
+            }
+            String appstatus =Label.OnBoarded;
+            query = query+' AND Candidate_Status__c!=:appstatus';
+            list<Candidate__c> candidatelistval = new list<Candidate__c>();
+            list<String> locationlistval = new list<String>();
+            list<String> typelistval = new list<String>();
+            for(Candidate__c candidate: Database.query(query)){
+                system.debug('tes '+candidate);
+                candidatelistval.add(candidate);
+                locationlistval.add(candidate.Current_Location__c);
+                typelistval.add(candidate.Candidate_Status__c);
+            }
+            WrapperClass wrap = new WrapperClass();
+            wrap.candidatelist = candidatelistval;
+            wrap.LocationPicklist = locationlistval;
+            wrap.typePicklist = typelistval;
+            return wrap;
+        }
+        catch(exception e){
+            Schema.DescribeSObjectResult objectDescriptioncontent = ErrorLog__c.getSObjectType().getDescribe();
+            if(objectDescriptioncontent.isCreateable() && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'StackTrace__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Message__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'LineNumber__c') && ObjectFieldAccessCheck.checkCreateAccess('ErrorLog__c', 'Type__c')){
+                ErrorLog__c errorlog = new ErrorLog__c(Type__c='CandidateGlobalSearchController.filterdata', StackTrace__c=e.getStackTraceString(), Message__c=e.getMessage(), LineNumber__c=e.getLineNumber());
+                database.insert(errorlog, false);
+            }
+            return null;
+        }
+    }
+    @AuraEnabled
+    public static list<emailTemplateWrapper> getEmailTempaltes(String jobId){
+        list<emailTemplateWrapper> emailTemplateWrapperlist = new list<emailTemplateWrapper>();
+        List<Job__c> jobRec = [SELECT Id, Name, MassEmailtoAllCandidates__c, Job_Description__c from Job__c where Id=:jobId];
+        map<String,emailTemplateWrapper> folderIdVsTemplateMap = new map<String,emailTemplateWrapper>();
+        Folder folderObj = new folder();
+        folderObj= [SELECT Id,Name FROM Folder where Name=:Label.Candidate_Mass_Mail];
+        for(sobject emailtemp : [ SELECT Id, markup, FolderId, HtmlValue, FolderName, isActive, body,Name,subject FROM EmailTemplate where isActive= true and FolderId =: folderObj.Id ]){ 
+            if( folderIdVsTemplateMap.containskey( String.valueof(emailtemp.get('FolderId'))) ){
+                EmailTemplates template = new EmailTemplates();
+                template.emailTemplateId = String.valueOf(emailtemp.get('Id'));
+                template.emailTemplatename = String.valueOf(emailtemp.get('Name'));
+                template.emailbody = (emailtemp.get('markup') != null ? String.valueOf(emailtemp.get('markup')) : '' );
+                System.debug(template.emailbody);
+                template.emailSubject = String.valueOf(emailtemp.get('subject'));
+                folderIdVsTemplateMap.get( String.valueof(emailtemp.get('FolderId')) ).emailtemplatelist.add( template );
+                
+            }else{
+                emailTemplateWrapper tempWrap = new emailTemplateWrapper();
+                tempWrap.folderId = String.valueOf(emailtemp.get('FolderId'));
+                tempWrap.folderName = String.valueOf(emailtemp.get('FolderName'));
+                tempWrap.jobRecord = jobRec[0];
+                emailTemplates template = new emailTemplates();
+                template.emailTemplateId = String.valueOf(emailtemp.get('Id'));
+                template.emailTemplatename = String.valueOf(emailtemp.get('Name'));
+                template.emailbody = (emailtemp.get('markup') != null ? String.valueOf(emailtemp.get('markup')) : '' );
+                template.emailSubject = String.valueOf(emailtemp.get('subject'));
+                tempWrap.emailtemplatelist = new list<emailTemplates>{ template };
+                folderIdVsTemplateMap.put( String.valueof(emailtemp.get('FolderId'))  , tempWrap );
+            }   
+        }
+        
+        if( !folderIdVsTemplateMap.isEmpty() ){
+            emailTemplateWrapperlist.addAll( folderIdVsTemplateMap.values() );
+            return emailTemplateWrapperlist;
+        }
+        return null;
+    }
+    @AuraEnabled
+    public static void removeAttachments(list<String> documentList){
+        if(documentList.size()>0){
+            list<ContentDocument> documentDeleteList = [SELECT Id from ContentDocument where ID IN: documentList];
+            if(documentDeleteList.size()>0){
+                Database.delete(documentDeleteList, false);
+            }
+        }   
+    }
+    @AuraEnabled
+    public static Job__c fetchJobRec(Id jobId){
+        return [SELECT NAME, ID, JOB_DESCRIPTION__C FROM JOB__C WHERE ID=:JOBID];
+    }
+    
+    public class emailTemplateWrapper{
+        @AuraEnabled 
+        public Job__c jobRecord{get;set;}
+        
+        @AuraEnabled 
+        public String folderName{get;set;}
+        
+        @AuraEnabled 
+        public String folderId{get;set;}
+        
+        @AuraEnabled
+        public list<emailTemplates> emailtemplatelist{get;set;}
+        
+    }
+    
+    public class emailTemplates{
+        
+        @AuraEnabled 
+        public String emailTemplateId{get;set;}
+        
+        @AuraEnabled 
+        public String emailbody{get;set;}
+        
+        @AuraEnabled
+        public String emailSubject {get;set;}
+        
+        @AuraEnabled 
+        public String emailTemplatename{get;set;}
+    }  
+
+    public class WrapperClass{
+        @AuraEnabled public list<string> typePicklist;
+        @AuraEnabled public list<string> LocationPicklist;
+        @AuraEnabled public Boolean massEmailCompleted;
+        @AuraEnabled public list<Candidate__c> candidatelist;
+    }
+    
+}

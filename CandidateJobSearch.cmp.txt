@@ -1,0 +1,277 @@
+<aura:component controller="CandidateGlobalSearchController" implements="force:appHostable,flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickAction" access="global" >
+    <aura:attribute name="typePicklist" type="string[]"/>
+    <aura:attribute name="locationPicklist" type="string[]"/>
+    <aura:attribute name="typeValue" type="string"/>
+    <aura:attribute name="locationValue" type="string"/>
+    <aura:attribute name="minexp" type="List"/>
+    <aura:attribute name="maxexp" type="List"/>
+    <aura:attribute name="minexpvalue" type="Integer"/>
+    <aura:attribute name="maxexpvalue" type="Integer"/>
+    <aura:attribute name="Candidatedata" type="List"/>
+    <aura:attribute name="masterdata" type="List"/>
+    <aura:attribute name="fulldata" type="List"/>
+    <aura:attribute name="columns" type="List"/>
+    <aura:attribute name="sortBy" type="String" default="Name"/>
+    <aura:attribute name="sortDirection" type="String" default="asc"/>
+    <aura:attribute name="defaultSortDirection" type="String"/>
+    <aura:attribute name="issearching" type="Boolean" default="false"/>
+    <aura:attribute name="filters" type="Boolean" default="false"/>
+    <aura:handler name="init" value="{!this}" action ="{!c.doinit}"/>
+    <aura:attribute name="selectedCandidates" type="List" default="[]"/>
+    <aura:attribute name="IsSpinner" type="Boolean" default="true"/>
+    <aura:attribute name="allcandidates" type="boolean" default="false"/>
+    <aura:attribute name="masscandidates" type="boolean" default="false"/>
+    <aura:attribute name="allcandidatescheck" type="boolean" default="false"/>
+    <aura:attribute name="addCandidateFlag" type="boolean" default="true"/>
+    
+    
+    <!--Mass Email attributes -->
+    <aura:attribute name="massCandidateFlag" type="boolean" default="false"/>
+    <aura:attribute name="mailStatus" type="boolean" default="false" />
+    <aura:attribute name="loaded" type="Boolean" default="false"/>
+    <aura:attribute name="email" type="Integer" default="0" />
+    <aura:attribute name="subject" type="string" />
+    <aura:attribute name="body" type="string" />
+    <aura:attribute name="emailfolderVSTemplateList" type="object[]" default="[]" />
+    <aura:attribute name="emailFolderList" type="object[]" default="[]" />
+    <aura:attribute name="emailTemplateList" type="object[]" default="[]" />
+    <aura:attribute name="emailbody" type="String" default="" />
+    <aura:attribute name="folderId1" type="String" default="" />
+    <aura:attribute name="templateIDs" type="String" default="" />
+    <aura:attribute name="massEmailCandidates" type="List" default="[]" />
+    <aura:attribute name="jobRec" type="Job__c"/>
+    <aura:attribute name="filelist" type="list" default="[]"/>
+    <aura:attribute name="fileIdlist" type="list" default="[]"/>
+    <aura:attribute name="searchJob" type="String"/>
+    <aura:attribute name="selectedJob" type="Object"/>
+    <aura:attribute name="displayCandName" type="String" default="" />
+	
+    <!--declare events hendlers-->  
+    <aura:handler name="oSelectedRecordEvent" event="c:selectedsObjectRecordEvent" action="{!c.handleComponentEvent}"/>
+    <aura:attribute name="selectedRecord" type="sObject" default="{}" description="Use,for store SELECTED sObject Record"/>
+    <aura:attribute name="selectedRecordWithAllDetails" type="sObject" default="{}" description="Use,for store SELECTED sObject Record"/>
+    
+    <!-- Pagination Logic-->
+    <aura:attribute name="pageNumber" type="Integer" default="0"/>
+    <aura:attribute name="pageSize" type="Integer" default="10"/>
+    <aura:attribute name="maxsize" type="Integer"/>
+    <aura:attribute name="isLastPage" type="Boolean" default="false"/>
+    <aura:attribute name="Pagechange" type="Boolean" default="false"/>
+    
+    
+    <ltng:require styles="{!$Resource.modalPOPUP}" />
+    
+    <lightning:card title="{!$Label.c.Suggested_Candidates}">
+        <aura:if isTrue="{!v.IsSpinner}">
+            <lightning:spinner variant="brand"  size="medium" alternativeText="Loading" />
+        </aura:if> 
+        <div>
+            <lightning:layout horizontalalign="center">
+                <lightning:layoutitem padding="around-small" size="3">
+                </lightning:layoutitem>
+                <lightning:layoutitem padding="around-small" size="6">
+                    <div onkeyup="{!c.handleKeyUp}">
+                        <lightning:input
+                                         aura:id="enter-search"
+                                         name="enter-search"
+                                         isLoading="{!v.issearching}"
+                                         type="search" placeholder="{!$Label.c.Search_Placeholder}" class="searchcss"/>
+                    </div>
+                </lightning:layoutitem>
+                <lightning:layoutitem padding="around-small" size="3">
+                </lightning:layoutitem>
+            </lightning:layout>
+            <aura:if isTrue="{!v.filters}">
+                <lightning:layout horizontalalign="center">
+                    <lightning:layoutitem padding="around-small" size="2">
+                    </lightning:layoutitem>
+                    <lightning:layoutitem padding="around-small" size="2">
+                        <lightning:select aura:id="minid" label="{!$Label.c.Min_Experience_Label}" class="slds-form-element" onchange="{!c.onChangeVal}" value="{!v.minexpvalue}">
+                            <aura:iteration items="{!v.minexp}" var="min">
+                                <option value="{!min}">{!min}</option>
+                            </aura:iteration>
+                        </lightning:select> 
+                    </lightning:layoutitem>
+                    <lightning:layoutitem padding="around-small" size="2">
+                        <lightning:select aura:id="maxid" label="{!$Label.c.Max_Experience_Label}" class="slds-form-element" onchange="{!c.onChangeVal}" value="{!v.maxexpvalue}">
+                            <aura:iteration items="{!v.maxexp}" var="max">
+                                <option value="{!max}">{!max}</option>
+                            </aura:iteration>
+                        </lightning:select>
+                    </lightning:layoutitem>
+                    <lightning:layoutitem padding="around-small" size="2">
+                        <lightning:select aura:id="locid" label="{!$Label.c.Location}" class="slds-form-element" onchange="{!c.onChangeVal}" value="{!v.locationValue}">
+                            <aura:iteration items="{!v.locationPicklist}" var="location">
+                                <option value="{!location}">{!location}</option>
+                            </aura:iteration>
+                        </lightning:select>
+                    </lightning:layoutitem>
+                    <lightning:layoutitem padding="around-small" size="2">
+                        <lightning:select aura:id="typeid" label="{!$Label.c.Status}" class="slds-form-element" onchange="{!c.onChangeVal}" value="{!v.typeValue}">
+                            <aura:iteration items="{!v.typePicklist}" var="typeval">
+                                <option value="{!typeval}">{!typeval}</option>
+                            </aura:iteration>
+                        </lightning:select>
+                    </lightning:layoutitem>
+                    <lightning:layoutitem padding="around-small" size="2">
+                    </lightning:layoutitem>
+                </lightning:layout>
+            </aura:if>
+            <div class="slds-p-top_small"></div>
+        </div>
+        <aura:if isTrue="{!v.masterdata.length>0}">
+            <lightning:layout horizontalalign="spread" class="alignclass">
+                <lightning:layoutitem padding="around-small" size="3">
+                    <lightning:input type="checkbox" label="{!$Label.c.MassEmailallCandidates}" value="{!v.allcandidates}" onchange="{!c.selectallcandidates}"/>
+                </lightning:layoutitem>
+                <lightning:layoutitem padding="around-small" size="3">
+                </lightning:layoutitem>
+                <lightning:layoutitem padding="around-small" size="3">
+                    <lightning:button variant="brand" title="{!$Label.c.MassEmail}" label="{!$Label.c.MassEmail}" onclick="{!c.massemailFlagMethod}"/>
+                </lightning:layoutitem>
+                
+                <aura:if isTrue="{!v.massCandidateFlag}">
+                    <lightning:layoutitem padding="around-small" size="4">
+                        <div role="dialog" tabindex="-1" class="slds-backdrop slds-backdrop_open" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1">
+                            <div class="slds-modal__container">
+                                <header class="slds-modal__header slds-size_1-of-2">
+                                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="{!$Label.c.Close}" onclick="{!c.closeMessage}">
+                                        <lightning:icon iconName="utility:close" size="xx-small" />
+                                        <span class="slds-assistive-text">{!$Label.c.Close}</span>
+                                    </button>
+                                    <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">{!$Label.c.Send_Email}</h2>
+                                </header>
+                                
+                                <div class="slds-modal__content slds-p-around_small slds-size_1-of-2" id="modal-content-id-1">
+                                    <div class="slds-m-around--medium">
+                                        <div class="slds-container--medium">
+                                            <div class="slds-form--stacked">
+                                                <label><b></b></label>
+                                                <div class="slds-form-element__control">
+                                                    <lightning:layout horizontalAlign="left">
+                                                        <lightning:layoutItem  size="4" class="slds-text-align--left">
+                                                            <c:customLookup SearchKeyWord="{!v.searchJob}" objectAPIName="Job__c"  selectedRecord="{!v.selectedJob}" label="{!$Label.c.Select_Job_Opening}" refresh="{!v.refreshval}"/>			                
+                                                        </lightning:layoutItem>
+                                                    </lightning:layout>
+                                                    <br></br>
+                                                    <lightning:layout horizontalAlign="left">
+                                                        <lightning:layoutItem size="8" class="slds-text-align--left">
+                                                            <div class="slds-text-align--left slds-form-element" aura:id="selectTemplate">
+                                                                <label class="slds-text-align--left" for="select-Template">{!$Label.c.Select_Template_Value}</label>
+                                                                <div class="slds-form-element__control slds-custompicklist">
+                                                                    <div class="slds-select_container">
+                                                                        <select class="slds-select" id="select-Template" onchange="{!c.onSelectEmailTemplate}">
+                                                                            <option value="">{!$Label.c.Please_Select_Email_Template}</option>
+                                                                            <aura:iteration items="{!v.emailTemplateList}" var="template">
+                                                                                <option value="{!template.emailTemplateId}">
+                                                                                    {!template.emailTemplatename}
+                                                                                </option>
+                                                                            </aura:iteration>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </lightning:layoutItem>
+                                                        <lightning:layoutItem size="5">
+                                                            <label  for="select-Template">{!$Label.c.Candidates_Selected}</label>
+                                                            <div>
+                                                                <input type="text" id="text-input-id-1" class="slds-NumberOfCandidates" placeholder="{!v.email}" value="{!v.email}" disabled="true"/>
+                                                            </div>
+                                                        </lightning:layoutItem>
+                                                    </lightning:layout>
+                                                    <br></br>
+                                                    
+                                                    <div class="slds-form-element slds-text-align--left">
+                                                        <div>
+                                                            <lightning:textarea  aura:id="text-input-id-1" value="{!v.subject}" class="slds-inputCustom" label="{!$Label.c.Subject}"/>
+                                                        </div>
+                                                    </div>
+                                                    <br></br>
+                                                    <aura:if isTrue="{!v.filelist.length>0}">
+                                                        <aura:iteration items="{!v.filelist}" var="fileval">
+                                                            <div class="slds-p-around_x-small">
+                                                                <lightning:pill name="{!fileval.Id}" label="{!fileval.Title}" onremove="{!c.handleRemove}">
+                                                                    <aura:set attribute="media">
+                                                                        <lightning:icon iconName="doctype:attachment"/>
+                                                                    </aura:set>
+                                                                </lightning:pill>
+                                                            </div>
+                                                        </aura:iteration>
+                                                    </aura:if>
+                                                    <br></br>
+                                                    <div class="slds-form-element slds-text-align--left">
+                                                        <label class="slds-form-element__label" for="textareaSample2">{!$Label.c.Mail_Body}</label>
+                                                        <div class="slds-form-element__control">
+                                                            <lightning:inputRichText aura:id="body" value="{!v.emailbody}" />
+                                                        </div>
+                                                    </div>
+                                                    <br></br>
+                                                    <lightning:layout horizontalAlign="center">
+                                                        <lightning:layoutItem size="5">
+                                                            <lightning:fileUpload class="span.slds-file-sector_button.slds-button.slds-button_neutral slds-p-right_xx-small slds-m-left_xx-small" label="{!$Label.c.Insert_Attachment}" multiple="true" recordId="{!v.recordId}" aura:id="multifileUpload" onuploadfinished="{!c.handleUploadFinished}" variant="border-filled"/>                             
+                                                        </lightning:layoutItem>
+                                                    </lightning:layout>
+                                                    
+                                                    <br></br>
+                                                    
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                </div>
+                                <footer class="slds-float_left slds-modal__footer slds-size_1-of-2">
+                                    <button class="slds-button slds-button_neutral" onclick="{!c.closeMessage}">{!$Label.c.Cancel}</button>
+                                    <button class="slds-button slds-button_brand" onclick="{!c.massemail}">{!$Label.c.Send_Email}</button>
+                                </footer>
+                            </div>
+                            
+                        </div>
+                    </lightning:layoutitem>
+                </aura:if>
+                <aura:if isTrue="{!v.addCandidateFlag}">
+                    <lightning:layoutitem padding="around-small" size="3">
+                        <lightning:button variant="success" title="{!$Label.c.Add_Candidate}" label="{!$Label.c.Add_Candidate}" onclick="{!c.submittedcandidate}"/>
+                    </lightning:layoutitem>
+                </aura:if>
+            </lightning:layout>
+            <br/>
+            <lightning:datatable columns="{!v.columns}"
+                                 aura:id="candidatetable"
+                                 data="{!v.Candidatedata}"
+                                 keyField="Id"
+                                 showRowNumberColumn="false"
+                                 rowNumberOffset="0" 
+                                 hideCheckboxColumn="false"                          
+                                 enableInfiniteLoading="true"
+                                 sortedBy="{!v.sortBy}"
+                                 sortedDirection="{!v.sortDirection}"
+                                 defaultSortDirection="{!v.defaultSortDirection}"
+                                 onrowaction="{!c.handleRowAction}"
+                                 onrowselection="{!c.selectcandidatemethod}"
+                                 onsort="{!c.handleColumnSorting}"/>
+            <br/>
+            <lightning:layout horizontalAlign="center">
+                <lightning:layoutItem size="3" class="slds-p-left_x-large">
+                    {!$Label.c.Page +' '} {!v.pageNumber+1} | {!$Label.c.Showing_records_from +' '} {!(((v.pageNumber)*v.pageSize)+1) + ' to ' + (v.maxsize)+' '}  {!$Label.c.of +' '} {!v.masterdata.length +' '} {!$Label.c.entries+' '}
+                </lightning:layoutItem>
+                
+                <lightning:layoutItem size="6">
+                    <div class="slds-align_absolute-center">                                          
+                        <lightning:button label="{!$Label.c.Prev}" iconName="utility:chevronleft" iconPosition="left"
+                                          onclick="{!c.handlePrev}" disabled="{!v.pageNumber == 0}"/>
+                        <lightning:button label="{!$Label.c.Next}" iconName="utility:chevronright" iconPosition="right"
+                                          disabled="{!v.isLastPage}" onclick="{!c.handleNext}"/>
+                    </div>
+                </lightning:layoutItem>
+                <lightning:layoutItem size="3">
+                </lightning:layoutItem>
+            </lightning:layout>
+            
+        </aura:if>
+        <aura:if isTrue="{!!v.masterdata.length>0}">
+            <p style="text-align:center;">{!$Label.c.No_Matching_Candidates_Found}</p>
+        </aura:if>
+    </lightning:card>
+    <lightning:overlayLibrary aura:id="overlayval"/>
+</aura:component>
